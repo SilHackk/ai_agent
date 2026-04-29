@@ -1,0 +1,1 @@
+# Čia ateityje bus duomenų bazės modeliai, pvz. SQLAlchemy modelis Analysis.
