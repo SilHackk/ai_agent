@@ -1,6 +1,9 @@
 import os
+import re
 from openai import OpenAI
 from app.core.config import OPENAI_API_KEY
+from services.text_processing import preprocess_text, tokenize, remove_stopwords
+from services.pdf_table_extractor import extract_window_tables_from_text
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -13,7 +16,42 @@ def load_prompt() -> str:
         return file.read()
 
 
-def analyze_request(email_text: str, pdf_text: str = "", pdf_images: list[dict] | None = None, classic_features: dict | None = None) -> str:
+def analyze_request(
+    email_text: str,
+    pdf_text: str = "",
+    pdf_images: list[dict] | None = None
+) -> str:
+
+    # 1. Sujungiame laiško ir PDF tekstą
+    full_text = email_text + " " + pdf_text
+
+    # 2. Klasikinis NLP preprocessing
+    clean_text = preprocess_text(full_text)
+
+    # 3. Tokenizacija
+    words, sentences = tokenize(clean_text)
+
+    # 4. Stop words šalinimas
+    filtered_words = remove_stopwords(words)
+
+    # 5. Regex informacijos ištraukimas
+    dimensions = re.findall(r"\d+\s*[xX×]\s*\d+", full_text)
+    numbers = re.findall(r"\d+", full_text)
+
+    # 6. Klasikiniais metodais ištraukti faktai
+    classic_features = {
+        "clean_text_preview": clean_text[:1000],
+        "word_count": len(words),
+        "sentence_count": len(sentences),
+        "filtered_keywords": filtered_words[:50],
+        "dimensions": dimensions,
+        "numbers": numbers,
+        "pdf_window_tables": pdf_window_tables
+    }
+
+    # 7. Ištraukti langų lentelės informaciją iš PDF teksto
+    pdf_window_tables = extract_window_tables_from_text(pdf_text)
+
     base_prompt = load_prompt()
 
     content = [
@@ -22,10 +60,11 @@ def analyze_request(email_text: str, pdf_text: str = "", pdf_images: list[dict] 
             "text": f"""
 {base_prompt}
 
-Klasikiniais metodais ištraukti faktai:
+Klasikiniais NLP metodais ištraukti faktai:
 {classic_features}
 
-Naudok šiuos faktus kaip pagrindą. Jeigu LLM analizė nesutampa su klasikiniais faktais, pažymėk neaiškumą, bet neišsigalvok.
+Naudok šiuos faktus kaip pagalbinį pagrindą. Jeigu LLM analizė nesutampa su klasikiniais faktais, pažymėk neaiškumą, bet neišsigalvok.
+
 Kliento laiškas:
 {email_text}
 
@@ -44,7 +83,8 @@ Jeigu informacijos nematai aiškiai, rašyk „neaiškiai matoma“, bet neišsi
         for item in pdf_images:
             content.append({
                 "type": "input_text",
-                "text": f"PDF puslapis {item['page']} kaip vaizdas:"
+                "image_url": f"data:image/png;base64,{item['image_base64']}",
+                "detail": "high"
             })
             content.append({
                 "type": "input_image",
