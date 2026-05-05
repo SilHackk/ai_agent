@@ -1,0 +1,20 @@
+{
+  "min_object_area_ratio": 0.00008,
+  "min_object_area_px": 80,
+  "ocr_enabled": false,
+  "known_colors": {
+    "blue_zone": {
+      "meaning": "emalitinė / speciali mėlyna zona, reikšmę tikslinti pagal įmonės projektavimo taisykles",
+      "hsv_ranges": [[[85, 35, 35], [140, 255, 255]]]
+    },
+    "red_opening_mark": {
+      "meaning": "galimas varstymo / atidarymo žymėjimas",
+      "hsv_ranges": [[[0, 45, 45], [14, 255, 255]], [[164, 45, 45], [180, 255, 255]]]
+    }
+  },
+  "manufacturing_rules": {
+    "roof_window_keywords": ["stoglang", "roof window", "velux"],
+    "door_keywords": ["dur", "door"],
+    "window_keywords": ["lang", "window"]
+  }
+}

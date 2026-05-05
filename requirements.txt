@@ -6,3 +6,7 @@ pymupdf
 pandas
 python-multipart
 requests
+opencv-python
+numpy
+pydantic
+pytesseract

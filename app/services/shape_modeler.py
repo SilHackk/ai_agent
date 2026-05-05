@@ -1,0 +1,477 @@
+from __future__ import annotations
+
+import json
+import math
+from pathlib import Path
+from typing import Any
+
+import cv2
+import numpy as np
+
+UPLOAD_DIR = Path("uploads")
+OVERLAY_DIR = UPLOAD_DIR / "overlays"
+CONFIG_PATH = Path("config/vision_rules.json")
+OVERLAY_DIR.mkdir(parents=True, exist_ok=True)
+
+DEFAULT_RULES: dict[str, Any] = {
+    "min_object_area_ratio": 0.00008,
+    "min_object_area_px": 80,
+    "max_object_area_ratio": 0.65,
+    "line_min_length_ratio": 0.015,
+    "ocr_enabled": False,
+    "known_colors": {
+        "blue_zone": {
+            "meaning": "emalitinė / speciali mėlyna zona, reikia tikrinti pagal projektą",
+            "hsv_ranges": [[[85, 35, 35], [140, 255, 255]]]
+        },
+        "red_opening_mark": {
+            "meaning": "galimas varstymo / atidarymo žymėjimas",
+            "hsv_ranges": [[[0, 45, 45], [14, 255, 255]], [[164, 45, 45], [180, 255, 255]]]
+        },
+        "green_mark": {
+            "meaning": "žalias projekto žymėjimas, reikšmė priklauso nuo įmonės taisyklių",
+            "hsv_ranges": [[[35, 35, 35], [85, 255, 255]]]
+        },
+        "yellow_mark": {
+            "meaning": "geltonas projekto žymėjimas, reikšmė priklauso nuo įmonės taisyklių",
+            "hsv_ranges": [[[18, 35, 55], [40, 255, 255]]]
+        }
+    },
+    "manufacturing_rules": {
+        "roof_window_keywords": ["stoglang", "roof window", "velux"],
+        "door_keywords": ["dur", "door"],
+        "window_keywords": ["lang", "window"]
+    }
+}
+
+
+def load_rules(config_path: str | Path = CONFIG_PATH) -> dict[str, Any]:
+    path = Path(config_path)
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(DEFAULT_RULES, ensure_ascii=False, indent=2), encoding="utf-8")
+        return DEFAULT_RULES
+    try:
+        user_rules = json.loads(path.read_text(encoding="utf-8"))
+        merged = DEFAULT_RULES.copy()
+        for key, value in user_rules.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = {**merged[key], **value}
+            else:
+                merged[key] = value
+        return merged
+    except Exception:
+        return DEFAULT_RULES
+
+
+def _read_image(path: str | Path) -> np.ndarray:
+    img = cv2.imread(str(path))
+    if img is None:
+        raise ValueError(f"Nepavyko perskaityti paveikslėlio: {path}")
+    return img
+
+
+def _bbox_from_contour(c: np.ndarray) -> list[int]:
+    x, y, w, h = cv2.boundingRect(c)
+    return [int(x), int(y), int(x + w), int(y + h)]
+
+
+def _bbox_area(bbox: list[int]) -> int:
+    x1, y1, x2, y2 = bbox
+    return max(0, x2 - x1) * max(0, y2 - y1)
+
+
+def _bbox_center(bbox: list[int]) -> tuple[float, float]:
+    x1, y1, x2, y2 = bbox
+    return (x1 + x2) / 2, (y1 + y2) / 2
+
+
+def _inside(inner_center: tuple[float, float], outer_bbox: list[int]) -> bool:
+    x, y = inner_center
+    x1, y1, x2, y2 = outer_bbox
+    return x1 <= x <= x2 and y1 <= y <= y2
+
+
+def _safe_crop(img: np.ndarray, bbox: list[int], pad: int = 8) -> np.ndarray:
+    h, w = img.shape[:2]
+    x1, y1, x2, y2 = bbox
+    x1, y1 = max(0, x1 - pad), max(0, y1 - pad)
+    x2, y2 = min(w, x2 + pad), min(h, y2 + pad)
+    return img[y1:y2, x1:x2]
+
+
+def detect_configured_color_marks(img: np.ndarray, rules: dict[str, Any]) -> list[dict[str, Any]]:
+    """Aptinka ne tik mėlyną/raudoną, bet bet kokias spalvas iš config/vision_rules.json.
+    Įmonė gali keisti taisykles nekeisdama kodo.
+    """
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    img_area = img.shape[0] * img.shape[1]
+    min_area = max(int(rules.get("min_object_area_px", 80)), int(img_area * rules.get("min_object_area_ratio", 0.00008)))
+    max_area = int(img_area * rules.get("max_object_area_ratio", 0.65))
+    objects: list[dict[str, Any]] = []
+
+    for label, cfg in rules.get("known_colors", {}).items():
+        mask_total = np.zeros(hsv.shape[:2], dtype=np.uint8)
+        for lower, upper in cfg.get("hsv_ranges", []):
+            mask = cv2.inRange(hsv, np.array(lower, dtype=np.uint8), np.array(upper, dtype=np.uint8))
+            mask_total = cv2.bitwise_or(mask_total, mask)
+        kernel = np.ones((3, 3), np.uint8)
+        mask_total = cv2.morphologyEx(mask_total, cv2.MORPH_OPEN, kernel)
+        mask_total = cv2.morphologyEx(mask_total, cv2.MORPH_CLOSE, kernel)
+        contours, _ = cv2.findContours(mask_total, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area < min_area or area > max_area:
+                continue
+            bbox = _bbox_from_contour(c)
+            x1, y1, x2, y2 = bbox
+            objects.append({
+                "object_type": label,
+                "semantic_hint": cfg.get("meaning", "spalvinis žymėjimas, reikšmę reikia patikrinti"),
+                "shape": "color_mark",
+                "bbox": bbox,
+                "width_px": float(x2 - x1),
+                "height_px": float(y2 - y1),
+                "area_px": float(area),
+                "opening_type": "unknown",
+                "color_zone": label if "zone" in label else None,
+                "profile": None,
+                "confidence": 0.62,
+                "source": "opencv_configured_color",
+                "needs_review": True,
+            })
+    return objects
+
+
+def detect_unknown_colored_marks(img: np.ndarray, rules: dict[str, Any]) -> list[dict[str, Any]]:
+    """Randa ryškias spalvotas zonas, net jei jos dar neaprašytos taisyklėse.
+    Tai padeda, kai skirtinguose projektuose žymėjimai yra nestandartiniai.
+    """
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    img_area = img.shape[0] * img.shape[1]
+    min_area = max(int(rules.get("min_object_area_px", 80)), int(img_area * rules.get("min_object_area_ratio", 0.00008)))
+    # Aukšta saturacija, bet ne per tamsu ir ne per balta/pilka.
+    mask = cv2.inRange(hsv, np.array([0, 45, 35], dtype=np.uint8), np.array([180, 255, 245], dtype=np.uint8))
+    kernel = np.ones((3, 3), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    objects: list[dict[str, Any]] = []
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < min_area:
+            continue
+        bbox = _bbox_from_contour(c)
+        crop = _safe_crop(hsv, bbox, pad=0)
+        if crop.size == 0:
+            continue
+        mean_h = float(np.mean(crop[:, :, 0]))
+        mean_s = float(np.mean(crop[:, :, 1]))
+        mean_v = float(np.mean(crop[:, :, 2]))
+        x1, y1, x2, y2 = bbox
+        objects.append({
+            "object_type": "unknown_colored_mark",
+            "semantic_hint": "nežinomas spalvinis žymėjimas; galima įtraukti į config/vision_rules.json, kai paaiškės reikšmė",
+            "shape": "color_mark",
+            "bbox": bbox,
+            "width_px": float(x2 - x1),
+            "height_px": float(y2 - y1),
+            "area_px": float(area),
+            "hsv_mean": [round(mean_h, 1), round(mean_s, 1), round(mean_v, 1)],
+            "opening_type": "unknown",
+            "color_zone": None,
+            "profile": None,
+            "confidence": 0.38,
+            "source": "opencv_unknown_color",
+            "needs_review": True,
+        })
+    return objects
+
+
+def detect_rectangle_like_elements(img: np.ndarray, rules: dict[str, Any]) -> list[dict[str, Any]]:
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Brėžiniai dažnai būna plonų linijų, todėl CLAHE padeda su kontrastu.
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    edges = cv2.Canny(gray, 45, 140)
+    kernel = np.ones((3, 3), np.uint8)
+    edges = cv2.dilate(edges, kernel, iterations=1)
+
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    img_area = img.shape[0] * img.shape[1]
+    min_area = max(int(rules.get("min_object_area_px", 80)), int(img_area * rules.get("min_object_area_ratio", 0.00008)))
+    max_area = int(img_area * rules.get("max_object_area_ratio", 0.65))
+    objects: list[dict[str, Any]] = []
+
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < min_area or area > max_area:
+            continue
+        x, y, w, h = cv2.boundingRect(c)
+        if w < 18 or h < 18:
+            continue
+        ratio = w / max(h, 1)
+        if ratio < 0.12 or ratio > 8.5:
+            continue
+        perimeter = cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, 0.025 * perimeter, True)
+        rectangularity = area / max(w * h, 1)
+        if len(approx) < 4 or rectangularity < 0.18:
+            continue
+
+        object_type = "door_or_window"
+        if h > w * 1.7:
+            object_type = "possible_door"
+        elif w > h * 1.8:
+            object_type = "possible_window_or_transom"
+        else:
+            object_type = "possible_window"
+
+        objects.append({
+            "object_type": object_type,
+            "semantic_hint": "stačiakampė konstrukcija; gali būti langas, durys, vitrina arba brėžinio blokas",
+            "shape": "rectangle_like",
+            "bbox": [int(x), int(y), int(x + w), int(y + h)],
+            "width_px": float(w),
+            "height_px": float(h),
+            "area_px": float(area),
+            "opening_type": "unknown",
+            "color_zone": None,
+            "profile": None,
+            "confidence": 0.44,
+            "source": "opencv_contours",
+            "needs_review": True,
+        })
+    return objects
+
+
+def detect_line_marks(img: np.ndarray, rules: dict[str, Any]) -> list[dict[str, Any]]:
+    """Randa linijų/brūkšnių žymėjimus nepriklausomai nuo spalvos.
+    Naudinga, kai varstymas žymimas ne raudonai, o juodai/pilkai.
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    edges = cv2.Canny(gray, 60, 160)
+    min_len = int(min(img.shape[:2]) * float(rules.get("line_min_length_ratio", 0.015)))
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=35, minLineLength=max(12, min_len), maxLineGap=5)
+    objects: list[dict[str, Any]] = []
+    if lines is None:
+        return objects
+    for idx, line in enumerate(lines[:350]):
+        x1, y1, x2, y2 = map(int, line[0])
+        length = math.hypot(x2 - x1, y2 - y1)
+        if length < max(12, min_len):
+            continue
+        angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
+        bbox = [min(x1, x2), min(y1, y2), max(x1, x2) + 1, max(y1, y2) + 1]
+        objects.append({
+            "object_type": "line_mark",
+            "semantic_hint": "linijinis/brūkšnio žymėjimas; gali reikšti varstymą, kryptį, matmenį arba pagalbinę liniją",
+            "shape": "line",
+            "bbox": bbox,
+            "width_px": float(abs(x2 - x1)),
+            "height_px": float(abs(y2 - y1)),
+            "length_px": round(length, 1),
+            "angle_deg": round(angle, 1),
+            "opening_type": "unknown",
+            "color_zone": None,
+            "profile": None,
+            "confidence": 0.28,
+            "source": "opencv_hough_lines",
+            "needs_review": True,
+        })
+    return objects
+
+
+def run_optional_ocr(img: np.ndarray, rules: dict[str, Any]) -> list[dict[str, Any]]:
+    if not rules.get("ocr_enabled", False):
+        return []
+    try:
+        import pytesseract  # type: ignore
+        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT, lang="eng")
+    except Exception:
+        return []
+
+    objects: list[dict[str, Any]] = []
+    for i, text in enumerate(data.get("text", [])):
+        text = (text or "").strip()
+        if len(text) < 2:
+            continue
+        try:
+            conf = float(data.get("conf", [0])[i]) / 100
+        except Exception:
+            conf = 0.2
+        if conf < 0.2:
+            continue
+        x, y, w, h = int(data["left"][i]), int(data["top"][i]), int(data["width"][i]), int(data["height"][i])
+        objects.append({
+            "object_type": "text_label",
+            "semantic_hint": "OCR tekstas iš brėžinio; gali būti profilis, matmuo arba pozicijos numeris",
+            "shape": "text",
+            "text": text,
+            "bbox": [x, y, x + w, y + h],
+            "width_px": float(w),
+            "height_px": float(h),
+            "opening_type": "unknown",
+            "color_zone": None,
+            "profile": text if any(ch.isalpha() for ch in text) else None,
+            "confidence": max(0.2, min(conf, 0.9)),
+            "source": "ocr_tesseract",
+            "needs_review": True,
+        })
+    return objects
+
+
+def enrich_elements(objects: list[dict[str, Any]], rules: dict[str, Any]) -> list[dict[str, Any]]:
+    color_marks = [o for o in objects if o["shape"] == "color_mark"]
+    line_marks = [o for o in objects if o["shape"] == "line"]
+    text_labels = [o for o in objects if o["object_type"] == "text_label"]
+
+    element_types = {"possible_window", "possible_door", "possible_window_or_transom", "door_or_window"}
+    manufacturing = rules.get("manufacturing_rules", {})
+
+    for obj in objects:
+        if obj.get("object_type") not in element_types:
+            continue
+        bbox = obj["bbox"]
+
+        related_colors = [m for m in color_marks if _inside(_bbox_center(m["bbox"]), bbox)]
+        related_lines = [m for m in line_marks if _inside(_bbox_center(m["bbox"]), bbox)]
+        related_texts = [m for m in text_labels if _inside(_bbox_center(m["bbox"]), bbox)]
+
+        if related_colors:
+            obj["related_color_marks"] = [m["object_type"] for m in related_colors[:8]]
+            if any("blue" in m["object_type"] for m in related_colors):
+                obj["color_zone"] = "blue_zone"
+                obj["confidence"] = max(float(obj.get("confidence", 0)), 0.52)
+        if related_lines:
+            obj["related_line_count"] = len(related_lines)
+            obj["opening_type"] = "galimai_varstomas_arba_zymetas"
+            obj["confidence"] = max(float(obj.get("confidence", 0)), 0.50)
+        if related_texts:
+            texts = [t.get("text", "") for t in related_texts]
+            obj["related_text"] = texts[:10]
+            joined = " ".join(texts).lower()
+            if any(k.lower() in joined for k in manufacturing.get("roof_window_keywords", [])):
+                obj["object_type"] = "possible_roof_window"
+                obj["manufacturable"] = False
+                obj["manufacturing_note"] = "Galimas stoglangis / negaminamas elementas pagal taisykles."
+            elif any(k.lower() in joined for k in manufacturing.get("door_keywords", [])):
+                obj["object_type"] = "possible_door"
+            elif any(k.lower() in joined for k in manufacturing.get("window_keywords", [])):
+                obj["object_type"] = "possible_window"
+            # Profilio žymos dažnai būna raidžių/skaičių kombinacijos.
+            profile_candidates = [t for t in texts if any(ch.isalpha() for ch in t) and any(ch.isdigit() for ch in t)]
+            if profile_candidates:
+                obj["profile"] = profile_candidates[0]
+
+        obj.setdefault("manufacturable", None)
+        obj["needs_review"] = True
+    return objects
+
+
+def build_structural_model(objects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    allowed = {"possible_window", "possible_door", "possible_window_or_transom", "door_or_window", "possible_roof_window"}
+    nr = 1
+    for obj in objects:
+        if obj.get("object_type") not in allowed:
+            continue
+        manufacturable = obj.get("manufacturable")
+        if manufacturable is False:
+            gamintina = "ne / tikrinti"
+        elif manufacturable is True:
+            gamintina = "taip"
+        else:
+            gamintina = "reikia_patvirtinti"
+        rows.append({
+            "nr": nr,
+            "tipas": obj.get("object_type"),
+            "forma": obj.get("shape"),
+            "plotis_px": round(float(obj.get("width_px") or 0), 1),
+            "aukstis_px": round(float(obj.get("height_px") or 0), 1),
+            "varstymas": obj.get("opening_type") or "nezinoma",
+            "spalvos_zona": obj.get("color_zone") or "nezinoma",
+            "profilis": obj.get("profile") or "nezinoma",
+            "susije_tekstai": obj.get("related_text", []),
+            "gamintina": gamintina,
+            "pastaba": obj.get("manufacturing_note") or obj.get("semantic_hint"),
+            "confidence": round(float(obj.get("confidence") or 0), 2),
+        })
+        nr += 1
+    return rows
+
+
+def create_overlay(image_path: str | Path, objects: list[dict[str, Any]]) -> str:
+    img = _read_image(image_path)
+    palette = {
+        "possible_window": (0, 180, 0),
+        "possible_window_or_transom": (0, 150, 0),
+        "possible_door": (0, 120, 220),
+        "possible_roof_window": (0, 0, 220),
+        "blue_zone": (255, 120, 0),
+        "red_opening_mark": (0, 0, 255),
+        "unknown_colored_mark": (180, 0, 180),
+        "line_mark": (80, 80, 80),
+        "text_label": (0, 180, 180),
+    }
+    for obj in objects:
+        x1, y1, x2, y2 = obj["bbox"]
+        color = palette.get(obj.get("object_type"), (0, 180, 0))
+        thickness = 1 if obj.get("shape") in {"line", "text"} else 2
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness)
+        label = f"{obj.get('object_type')} {float(obj.get('confidence') or 0):.2f}"
+        cv2.putText(img, label[:45], (x1, max(18, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.42, color, 1)
+    out_path = OVERLAY_DIR / f"overlay_{Path(image_path).stem}.png"
+    cv2.imwrite(str(out_path), img)
+    return str(out_path)
+
+
+def model_shapes_from_image(image_path: str | Path, rules_path: str | Path = CONFIG_PATH) -> dict[str, Any]:
+    rules = load_rules(rules_path)
+    img = _read_image(image_path)
+
+    configured_colors = detect_configured_color_marks(img, rules)
+    unknown_colors = detect_unknown_colored_marks(img, rules)
+    rectangles = detect_rectangle_like_elements(img, rules)
+    lines = detect_line_marks(img, rules)
+    texts = run_optional_ocr(img, rules)
+
+    # Dedup paprastai: paliekam viską, bet smulkius line/text objektus lentelėje nerodom.
+    objects = rectangles + configured_colors + unknown_colors + lines + texts
+    objects = enrich_elements(objects, rules)
+    overlay = create_overlay(image_path, objects)
+    table = build_structural_model(objects)
+
+    return {
+        "source_image": str(image_path),
+        "overlay_image": overlay,
+        "rules_path": str(rules_path),
+        "objects": objects,
+        "structural_model": table,
+        "mbcad_like_table": table,
+        "notes": [
+            "Tai universalus rule-based + OCR pasiruošimo modelis, o ne apmokytas YOLO modelis.",
+            "Nežinomus spalvinius žymėjimus galima perkelti į config/vision_rules.json, kai įmonė paaiškina jų reikšmę.",
+            "Matmenys kol kas pikseliais; milimetrams reikia brėžinio mastelio arba OCR matmenų nuskaitymo."
+        ]
+    }
+def analyze_image_shapes(image_path: str) -> dict:
+    """
+    Suderinamumo funkcija project_analyzer.py failui.
+    Jei pagrindinė shape analizės funkcija vadinasi kitaip, čia ją pakviečiame.
+    """
+    if "analyze_shapes" in globals():
+        return analyze_shapes(image_path)
+
+    if "analyze_drawing_image" in globals():
+        return analyze_drawing_image(image_path)
+
+    if "model_shapes_from_image" in globals():
+        return model_shapes_from_image(image_path)
+
+    return {
+        "detected_objects": [],
+        "mbcad_like_table": [],
+        "overlay_image_path": None,
+        "warning": "shape_modeler.py nerasta pagrindinė analizės funkcija"
+    }
