@@ -50,6 +50,87 @@ CITIES = [
     "alytus", "marijampolė", "marijampole"
 ]
 
+SIZE_HINT_KEYWORDS = [
+    # mažas
+    "mažas", "mazas",
+    "maža", "maza",
+    "mažą", "maza",
+    "mažu", "mazu",
+    "maži", "mazi",
+    "mažesnis", "mazesnis",
+    "mažesni", "mazesni",
+    "nedidelis",
+    "nedidelė",
+    "nedidelio",
+    "nedideli",
+    "kompaktiškas",
+    "kompaktiskas",
+
+    # didelis
+    "didelis",
+    "didelė",
+    "didele",
+    "didelio",
+    "dideli",
+    "didesnis",
+    "didesni",
+    "platus",
+    "plati",
+    "aukštas",
+    "aukšta",
+
+    # aukštis / plotis
+    "siauras",
+    "siaura",
+    "plonas",
+    "plona",
+    "žemas",
+    "zemas",
+    "aukštas",
+    "aukstas",
+
+    # kiekio užuominos
+    "vienas",
+    "viena",
+    "pora",
+    "keli",
+    "keli",
+    "kelios",
+    "daug",
+    "keletas",
+
+    # neaiškūs techniniai aprašymai
+    "standartinis",
+    "standartinė",
+    "nestandartinis",
+    "nestandartinė",
+    "įprastas",
+    "iprastas",
+    "panoraminis",
+    "vitrininis"
+]
+GLASS_KEYWORDS = [
+    "trijų stiklų",
+    "3 stiklų",
+    "dviejų stiklų",
+    "2 stiklų",
+    "selektyvinis",
+    "tonuotas",
+    "grūdintas",
+    "matinis",
+    "saugus stiklas"
+]
+
+THERMAL_KEYWORDS = [
+    "šiltas",
+    "siltas",
+    "šiltesnis",
+    "energinė klasė",
+    "a++",
+    "a+",
+    "sandarus",
+    "šilumos izoliacija"
+]
 
 def tokenize(text: str) -> list[str]:
     text = text.lower()
@@ -133,6 +214,9 @@ def extract_classic_features(text: str) -> dict:
         "urgency": extract_simple_keywords(text, URGENCY_KEYWORDS),
         "materials": extract_simple_keywords(text, MATERIAL_KEYWORDS),
         "colors": extract_simple_keywords(text, COLOR_KEYWORDS),
+        "glass_types": extract_simple_keywords(text, GLASS_KEYWORDS),
+        "thermal_requirements": extract_simple_keywords(text, THERMAL_KEYWORDS),
+        "size_hints": extract_simple_keywords(text, SIZE_HINT_KEYWORDS),
     }
 
     extracted["missing_info"] = detect_missing_info(extracted)

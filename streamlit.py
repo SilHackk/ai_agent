@@ -40,7 +40,57 @@ mode = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.write("Backend:")
 st.sidebar.code(BASE_URL)
+st.sidebar.markdown("---")
+show_nlp_steps = st.sidebar.checkbox(
+    "Rodyti NLP metodų žingsnius demo",
+    value=True
+)
+def show_nlp_debug(analysis):
+    nlp_debug = analysis.get("nlp_debug", {})
 
+    if not nlp_debug:
+        st.info("NLP tarpinių žingsnių backend dar negrąžina.")
+        return
+
+    with st.expander("NLP metodų tarpiniai žingsniai demo", expanded=True):
+        st.subheader("1. Originalus tekstas")
+        st.text_area(
+            "Originalus tekstas",
+            value=nlp_debug.get("original_text", ""),
+            height=150,
+            key="debug_original_text"
+        )
+
+        st.subheader("2. Teksto valymas / preprocessing")
+        st.text_area(
+            "Išvalytas tekstas",
+            value=nlp_debug.get("clean_text", ""),
+            height=150,
+            key="debug_clean_text"
+        )
+
+        st.subheader("3. Tokenizacija")
+        st.write("Žodžių skaičius:", nlp_debug.get("word_count", 0))
+        st.write("Sakinių skaičius:", nlp_debug.get("sentence_count", 0))
+        st.write("Pirmi tokenai:")
+        st.write(nlp_debug.get("tokens_preview", []))
+
+        st.subheader("4. Stop words šalinimas")
+        st.write("Žodžiai po filtravimo:")
+        st.write(nlp_debug.get("filtered_words_preview", []))
+
+        st.subheader("5. Rasti techniniai parametrai")
+        st.json(nlp_debug.get("extracted_parameters", {}))
+
+        st.subheader("6. Trūkstami laukai")
+        missing_fields = nlp_debug.get("missing_fields", [])
+
+        if missing_fields:
+            for field in missing_fields:
+                st.warning(str(field))
+        else:
+            st.success("Trūkstamų laukų nerasta.")
+            
 def show_analysis_result(analysis, files_processed=None):
     if isinstance(analysis, str):
         try:
@@ -163,6 +213,9 @@ def show_analysis_result(analysis, files_processed=None):
 
     st.text_area("Juodraštis", value=draft, height=180)
 
+    if show_nlp_steps:
+        show_nlp_debug(analysis)
+
     with st.expander("Pilnas JSON rezultatas"):
         st.json(analysis)
 
@@ -281,23 +334,33 @@ if mode == "Outlook laiškai":
     st.header("Outlook laiškų importas ir analizė")
 
     st.info(
-        "Šis režimas naudoja Microsoft Graph API. Pirmą kartą terminale gali atsirasti prisijungimo kodas."
+        "Šis režimas naudoja Microsoft Graph prisijungimą prie Outlook pašto ir leidžia importuoti laiškus su prisegtais failais."
     )
 
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        limit = st.number_input("Kiek laiškų peržiūrėti", min_value=1, max_value=100, value=20)
+        limit = st.number_input(
+            "Kiek laiškų peržiūrėti",
+            min_value=1,
+            max_value=100,
+            value=20
+        )
 
     with col2:
-        only_with_attachments = st.checkbox("Rodyti tik su prisegtais failais", value=True)
+        only_with_attachments = st.checkbox(
+            "Rodyti tik su prisegtais failais",
+            value=True
+        )
 
     if st.button("Gauti Outlook laiškus", use_container_width=True):
         with st.spinner("Jungiama prie Outlook ir gaunami laiškai..."):
             response = requests.get(
-                f"{BASE_URL}/automation/outlook/preview",
+                f"{BASE_URL}/automation/emails/preview",
                 params={
                     "limit": limit,
+                    "mailbox": "Inbox",
+                    "query": "",
                     "only_with_attachments": only_with_attachments
                 },
                 timeout=120,
@@ -308,8 +371,13 @@ if mode == "Outlook laiškai":
             st.code(response.text)
         else:
             data = response.json()
-            st.session_state.outlook_messages = data.get("messages", [])
-            st.success(f"Gauta laiškų: {len(st.session_state.outlook_messages)}")
+
+            # email_importer.py grąžina lauką "emails"
+            st.session_state.outlook_messages = data.get("emails", [])
+
+            st.success(
+                f"Gauta laiškų: {len(st.session_state.outlook_messages)}"
+            )
 
     messages = st.session_state.outlook_messages
 
@@ -319,21 +387,36 @@ if mode == "Outlook laiškai":
         selected_ids = []
 
         for msg in messages:
-            label = f"{msg.get('received', '')} | {msg.get('from_email', '')} | {msg.get('subject', '')}"
+            uid = msg.get("uid")
+            date = msg.get("date", "")
+            sender = msg.get("from", "")
+            subject = msg.get("subject", "")
+            snippet = msg.get("snippet", "")
+            attachments = msg.get("attachments", [])
+
+            label = f"{date} | {sender} | {subject}"
 
             checked = st.checkbox(
                 label,
-                key=f"msg_{msg.get('id')}"
+                key=f"msg_{uid}"
             )
 
-            with st.expander(f"Laiško peržiūra: {msg.get('subject', '')}"):
-                st.write("Nuo:", msg.get("from_email"))
-                st.write("Data:", msg.get("received"))
-                st.write("Turi attachmentų:", msg.get("has_attachments"))
-                st.write(msg.get("body_preview", ""))
+            with st.expander(f"Laiško peržiūra: {subject}"):
+                st.write("Nuo:", sender)
+                st.write("Data:", date)
+                st.write("Turi attachmentų:", bool(attachments))
+                st.write("Prisegti failai:")
+
+                if attachments:
+                    st.dataframe(pd.DataFrame(attachments), use_container_width=True)
+                else:
+                    st.info("Prisegtų failų nėra.")
+
+                st.write("Laiško tekstas:")
+                st.write(snippet)
 
             if checked:
-                selected_ids.append(msg.get("id"))
+                selected_ids.append(uid)
 
         if selected_ids:
             st.success(f"Pasirinkta laiškų: {len(selected_ids)}")
@@ -341,8 +424,11 @@ if mode == "Outlook laiškai":
         if st.button("Importuoti pasirinktus laiškus", use_container_width=True):
             with st.spinner("Importuojami laiškai ir attachmentai..."):
                 response = requests.post(
-                    f"{BASE_URL}/automation/outlook/import-selected",
-                    json={"message_ids": selected_ids},
+                    f"{BASE_URL}/automation/emails/import-selected",
+                    json={
+                        "uids": selected_ids,
+                        "mailbox": "Inbox"
+                    },
                     timeout=300,
                 )
 
@@ -351,19 +437,28 @@ if mode == "Outlook laiškai":
                 st.code(response.text)
             else:
                 data = response.json()
-                st.session_state.imported_projects = data.get("imported", [])
-                st.success(f"Importuota: {data.get('imported_count')}")
+
+                # email_importer.py grąžina "projects"
+                st.session_state.imported_projects = data.get("projects", [])
+
+                st.success(
+                    f"Importuota: {data.get('imported', 0)}, praleista: {data.get('skipped', 0)}"
+                )
 
         if st.session_state.imported_projects:
             st.subheader("Importuoti laiškai / projektai")
 
             rows = []
+
             for project in st.session_state.imported_projects:
+                files = project.get("files", [])
+
                 rows.append({
                     "project_id": project.get("project_id"),
+                    "uid": project.get("uid"),
                     "subject": project.get("subject"),
-                    "from_email": project.get("from_email"),
-                    "attachments": len(project.get("attachments", []))
+                    "from": project.get("from"),
+                    "files": len(files)
                 })
 
             st.dataframe(pd.DataFrame(rows), use_container_width=True)
@@ -384,10 +479,11 @@ if mode == "Outlook laiškai":
                 processed_files = []
 
                 for project in st.session_state.imported_projects:
-                    attachments = project.get("attachments", [])
+                    files = project.get("files", [])
 
-                    for attachment in attachments:
-                        path = attachment.get("path")
+                    for file_info in files:
+                        path = file_info.get("path")
+                        filename = file_info.get("filename", "attachment.pdf")
 
                         if not path or not path.lower().endswith(".pdf"):
                             continue
@@ -399,12 +495,12 @@ if mode == "Outlook laiškai":
                         with open(path, "rb") as f:
                             file_bytes = f.read()
 
-                        with st.spinner(f"Analizuojamas PDF: {attachment.get('filename')}"):
+                        with st.spinner(f"Analizuojamas PDF: {filename}"):
                             response = requests.post(
                                 f"{BASE_URL}/automation/pdf/analyze-selected-pages",
                                 files={
                                     "file": (
-                                        attachment.get("filename", "attachment.pdf"),
+                                        filename,
                                         file_bytes,
                                         "application/pdf"
                                     )
@@ -413,7 +509,7 @@ if mode == "Outlook laiškai":
                             )
 
                         if response.status_code != 200:
-                            st.error(f"Klaida analizuojant {attachment.get('filename')}")
+                            st.error(f"Klaida analizuojant {filename}")
                             st.code(response.text)
                             continue
 
@@ -427,7 +523,7 @@ if mode == "Outlook laiškai":
 
                         processed_files.append({
                             "project_id": project.get("project_id"),
-                            "filename": attachment.get("filename"),
+                            "filename": filename,
                             "path": path
                         })
 
@@ -436,4 +532,9 @@ if mode == "Outlook laiškai":
 
                 st.success("Importuotų laiškų PDF analizė baigta.")
 
-            show_analysis_result(st.session_state.analysis, st.session_state.files_processed)
+            show_analysis_result(
+                st.session_state.analysis,
+                st.session_state.files_processed
+            )
+            #st.write("Sentiment analysis:")
+            #st.json(st.session_state.sentiment)

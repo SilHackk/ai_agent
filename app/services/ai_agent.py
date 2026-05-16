@@ -4,6 +4,7 @@ from openai import OpenAI
 from app.core.config import OPENAI_API_KEY
 from app.services.text_processing import preprocess_text, tokenize, remove_stopwords
 from app.services.pdf_table_extractor import extract_window_tables_from_text
+from app.services.sentiment_service import analyze_sentiment
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -22,6 +23,8 @@ def analyze_request(
     pdf_images: list[dict] | None = None,
     classic_features: dict | None = None
 ) -> str:
+ 
+    sentiment = analyze_sentiment(email_text)
 
     full_text = email_text + " " + pdf_text
 
@@ -37,10 +40,12 @@ def analyze_request(
             "word_count": len(words),
             "sentence_count": len(sentences),
             "filtered_keywords": filtered_words[:50],
-            "pdf_window_tables": pdf_window_tables
+            "pdf_window_tables": pdf_window_tables,
+            "sentiment_analysis": sentiment
         }
     else:
         classic_features["pdf_window_tables"] = pdf_window_tables
+        classic_features["sentiment_analysis"] = sentiment
 
     base_prompt = load_prompt()
 

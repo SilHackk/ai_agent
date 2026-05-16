@@ -18,7 +18,45 @@ def tokenize(text):
     return words, sentences
 
 
-stop_words = {"ir", "bet", "kad", "su", "į", "iš", "ar"}
+stop_words = {
+    "ir", "bet", "kad", "su", "į", "iš", "ar", "bei",
+    "o", "aš", "as", "mes", "jus", "jūs", "man", "mums",
+    "laba", "diena", "sveiki", "sveikas", "sveika",
+    "labas", "labadiena", "hi", "hello",
+
+    "noriu", "norime", "norėčiau", "noreciau",
+    "reikia", "gal", "galima", "domina",
+    "ieškau", "ieskau", "planuoju",
+
+    "viskas", "gerai", "ane", "taip", "ne",
+    "tik", "dar", "jau", "čia", "cia",
+    "ten", "šitas", "sitas", "tas",
+    "šitie", "sitie",
+
+    "prašau", "prasau", "ačiū", "aciu",
+    "dėkoju", "dekui",
+
+    "dėl", "del", "apie", "pagal",
+    "nuo", "iki", "po", "prie",
+
+    "būtų", "butu", "yra", "buvo",
+    "esu", "esame", "bus", "busime",
+
+    "kokia", "koks", "kokie", "kuri",
+    "kuris", "kurie",
+
+    "mano", "mūsų", "musu", "jūsų",
+    "jusu", "savo",
+
+    "labai", "truputi", "šiek", "siektiek",
+    "maždaug", "mazdaug",
+
+    "atsiųsti", "atsiuskite", "atsiųskite",
+    "paskambinti", "susisiekti",
+
+    "projektas", "objektas", "variantas",
+    "sprendimas"
+}
 
 def remove_stopwords(words):
     return [w for w in words if w not in stop_words]
