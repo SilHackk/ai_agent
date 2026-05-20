@@ -1,30 +1,55 @@
-# Product
+# Future Roadmap
 
-AI-powered assistant for processing window-related customer inquiries.
+# Short-term Goals
 
-## Goal
-Reduce manual work for employees before using MBcad / Klaes.
+- Better PDF text extraction
+- Improved OCR
+- JSON structured outputs
+- Better UI
+- Analysis saving
+- Improved NLP extraction
 
-## What it does
-- Reads customer emails
-- Reads PDF project files
-- Extracts key information (location, dimensions, requirements)
-- Detects missing information
-- Generates response drafts for clients
-- Prepares structured data for internal processing
+---
 
-## What it does NOT do (MVP)
-- Does not calculate final pricing
-- Does not replace MBcad/Klaes
-- Does not automatically send emails
+# Mid-term Goals
 
-## Target users
-- Sales managers
-- Project estimators
-- Customer support staff
+- Outlook integration
+- Gmail integration
+- CRM integration
+- Database support
+- User authentication
+- Better document classification
 
-## Value
-- Saves time
-- Standardizes responses
-- Reduces human error
-- Speeds up sales process
+---
+
+# Long-term Goals
+
+- MBcad workflow analysis
+- MBcad button recognition
+- Screen recording analysis
+- Azure AI action recognition
+- Workflow automation
+- AI-driven UI interaction
+- Full MBcad assistant
+
+---
+
+# Research Areas
+
+- Computer vision for UI understanding
+- Workflow learning
+- OCR improvement
+- Technical drawing analysis
+- AI automation pipelines
+
+---
+
+# Final Vision
+
+Create an AI assistant that:
+- understands customer requests
+- understands MBcad workflows
+- reduces repetitive work
+- assists employees during quotation preparation
+- eventually automates repetitive MBcad tasks
+```
