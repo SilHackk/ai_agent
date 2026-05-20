@@ -1,3 +1,4 @@
+#Sistema analizuoja ne tik tekstą, bet ir PDF dokumentus.
 import fitz
 import base64
 

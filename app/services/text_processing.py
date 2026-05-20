@@ -1,3 +1,4 @@
+#Čia naudojami klasikiniai NLP metodai: teksto valymas, tokenizacija ir stop words šalinimas.
 import re
 from collections import Counter
 

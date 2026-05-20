@@ -1,3 +1,7 @@
+#pagrindins api endpoint
+#orchestration
+#priima teskta ir failus, tada perduoad nlp analizei ir pdf puslapiu atrankai, galiausiai saugo rezultatus
+import os
 from fastapi import APIRouter, UploadFile, File, Form
 from typing import List
 import json

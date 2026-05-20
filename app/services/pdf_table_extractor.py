@@ -1,3 +1,4 @@
+#Papildomai bandoma ištraukti PDF lenteles ir techninius duomenis
 import re
 
 

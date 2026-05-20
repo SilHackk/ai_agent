@@ -1,3 +1,4 @@
+#Čia naudojami regex šablonai ir leksikonai techninių parametrų ištraukimui.
 import re
 
 
@@ -51,7 +52,6 @@ CITIES = [
 ]
 
 SIZE_HINT_KEYWORDS = [
-    # mažas
     "mažas", "mazas",
     "maža", "maza",
     "mažą", "maza",
@@ -66,7 +66,6 @@ SIZE_HINT_KEYWORDS = [
     "kompaktiškas",
     "kompaktiskas",
 
-    # didelis
     "didelis",
     "didelė",
     "didele",
@@ -79,7 +78,6 @@ SIZE_HINT_KEYWORDS = [
     "aukštas",
     "aukšta",
 
-    # aukštis / plotis
     "siauras",
     "siaura",
     "plonas",
@@ -89,7 +87,6 @@ SIZE_HINT_KEYWORDS = [
     "aukštas",
     "aukstas",
 
-    # kiekio užuominos
     "vienas",
     "viena",
     "pora",
@@ -99,7 +96,6 @@ SIZE_HINT_KEYWORDS = [
     "daug",
     "keletas",
 
-    # neaiškūs techniniai aprašymai
     "standartinis",
     "standartinė",
     "nestandartinis",

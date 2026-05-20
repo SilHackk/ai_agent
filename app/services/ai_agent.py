@@ -1,3 +1,4 @@
+#Po klasikinio NLP analizės rezultatai perduodami LLM modeliui platesnei kontekstinei analizei
 import os
 from openai import OpenAI
 

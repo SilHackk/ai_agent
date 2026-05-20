@@ -1,3 +1,4 @@
+#cia su emocijomis, tad reikia pasalintis, nes proejktas labiau techninis
 from transformers import pipeline
 
 classifier = pipeline(
