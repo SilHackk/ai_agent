@@ -12,6 +12,14 @@ BASE_URL = os.getenv("FASTAPI_URL", "http://127.0.0.1:8000")
 MANUAL_ANALYZE_URL = f"{BASE_URL}/analyze"
 CRM_URL = f"{BASE_URL}/crm"
 
+
+def _opt_idx(options: list, value) -> int:
+    """Returns index of value in options list, or last index (Nenurodyta) if not found."""
+    try:
+        return options.index(str(value)) if value else len(options) - 1
+    except ValueError:
+        return len(options) - 1
+
 st.set_page_config(
     page_title="AI langų užklausų asistentas",
     page_icon="🪟",
@@ -161,16 +169,30 @@ def show_analysis_result(analysis, files_processed=None):
             "zymejimas":           "Žymėjimas",
             "element_type":        "Elemento tipas",
             "sistema":             "Sistema",
+            "profilio_variantas":  "Profilis (ST/HI)",
             "plotis_mm":           "Plotis (mm)",
             "aukstis_mm":          "Aukštis (mm)",
             "kiekis":              "Kiekis",
             "spalva_isorine":      "Spalva išorinė",
+            "spalva_tipas":        "Spalvos tipas",
+            "spalva_pavirsius":    "Paviršius",
             "spalva_vidine":       "Spalva vidinė",
             "stiklo_paketas":      "Stiklo paketas",
+            "stiklo_storis_mm":    "Stiklo storis (mm)",
+            "stiklo_kodas":        "Stiklo kodas",
+            "stiklo_ug":           "Ug (W/m²K)",
+            "stiklo_g":            "g (SHGC)",
             "varstymas":           "Varstymas",
-            "profilio_variantas":  "Profilis (ST/SI)",
             "kampų_jungtys":       "Kampų jungtys",
             "montavimo_budas":     "Montavimas",
+            "slenkscio_juosta":    "Slenkščio juosta",
+            "stiklinimo_juosta":   "Stiklinimo juosta",
+            "tarpine_drenazas":    "Tarpinė (drenažas)",
+            "tarpine_rebet":       "Tarpinė (rebetas)",
+            "tarpine_centrinis":   "Tarpinė (centrinis)",
+            "tarpine_slenkscio":   "Tarpinė (slenkstis)",
+            "furnitura_rankena":   "Rankena",
+            "apsauga_rc":          "RC apsauga",
             "pastabos":            "Pastabos",
         }
 
@@ -259,6 +281,175 @@ def show_analysis_result(analysis, files_processed=None):
                                 corrected_value=comment,
                             )
                             st.success("Pataisymas išsaugotas ✅")
+
+            # ── MBcad redagavimo forma su dropdown'ais ───────────────────────
+            st.markdown("---")
+            with st.expander("✏️ Redaguoti MBcad lentelę (dropdown'ai kaip MBcad programoje)", expanded=False):
+                st.caption("Pataisyk AI sugeneruotus laukus. Paspaudus 'Išsaugoti' — įrašoma į DB ir galima eksportuoti.")
+
+                MBCAD_OPTIONS = {
+                    "element_type": [
+                        "1) Windows and display windows",
+                        "2) Inward opening doors",
+                        "3) Outward opening doors",
+                        "4) Other doors",
+                        "5) Façades",
+                        "6) Other",
+                    ],
+                    "sistema": [
+                        "MB-45","MB-59S","MB-60","MB-60US","MB-69V",
+                        "MB-70","MB-70US","MB-70HI",
+                        "MB-79N","MB-79H","MB-79HI","MB-79N RENO MONO","MB-79N US","MB-79N WW",
+                        "MB-80","MB-86","MB-86N","MB-96US",
+                        "MB-104","MB-104 Windows",
+                        "MB-SR50N","MB-SR50N EFEKT","MB-SR50N HI+",
+                        "MB-SLIDE","MB-SLIDER","MB-FOLD LINE","MB-SOFT",
+                        "Patikslinti",
+                    ],
+                    "profilio_variantas": ["ST","HI","N","US","HI+","Nenurodyta"],
+                    "spalva_tipas": [
+                        "0 raw",
+                        "1 C-B - Anodized, natural aluminum",
+                        "2 Anodized, colour",
+                        "X) RAL - Lacquered, colour",
+                        "X) RAL - Lacquered, typical",
+                        "X) RAL - Lacquered, untypical",
+                        "Y) Bicolour (NRI-E Dial, 3 Inter.)",
+                        "Z) Anodized by user - RAL",
+                        "Z) Lacquered by user - RAL",
+                        "Nenurodyta",
+                    ],
+                    "spalva_pavirsius": ["MAT","STRUKTURA","SEASIDE","STANDARD","Nenurodyta"],
+                    "stiklo_paketas": [
+                        "Single glass",
+                        "Double glass unit",
+                        "Combined two-chamber pane",
+                        "Vitrage simple",
+                        "Nenurodyta",
+                    ],
+                    "varstymas": [
+                        "Fixed",
+                        "Inward opening",
+                        "Inward opening tilt-turn",
+                        "Outward opening",
+                        "Sliding",
+                        "Folding",
+                        "Nenurodyta",
+                    ],
+                    "kampų_jungtys": ["Crimped","Pinned","Nenurodyta"],
+                    "montavimo_budas": [
+                        "No fixing",
+                        "Anchors",
+                        "Expansion bolts",
+                        "Expansion bolts (alternative)",
+                        "Concrete screws",
+                        "Nenurodyta",
+                    ],
+                    "slenkscio_juosta": [
+                        "Standard strip",
+                        "Strips do not require milling",
+                        "Nenurodyta",
+                    ],
+                    "stiklinimo_juosta": [
+                        "Standard (rectangular)",
+                        "Prestige (rounded)",
+                        "Style",
+                        "Standard (rectangular, Style gasket)",
+                        "Prestige (rounded, Style gaskets)",
+                        "Nenurodyta",
+                    ],
+                    "tarpine_drenazas": ["No drainage","8045501X","8045502X","Nenurodyta"],
+                    "tarpine_rebet": ["120454","120523","120523+120524","Nenurodyta"],
+                    "tarpine_centrinis": ["120522","120590","Nenurodyta"],
+                    "tarpine_slenkscio": ["120757","121592","Nenurodyta"],
+                    "furnitura_rankena": [
+                        "ALUPROF - Tongue handle CLASSIC",
+                        "ALUPROF - Tongue handle PRESTIGE",
+                        "ALUPROF - Tongue handle SMART",
+                        "ALUPROF - Tongue handle SLIM",
+                        "ALUPROF - Push-pull handle",
+                        "ALUPROF - Offset handle",
+                        "Standard",
+                        "Nenurodyta",
+                    ],
+                    "apsauga_rc": ["No","RC1","RC2","RC3","RC4","Nenurodyta"],
+                }
+
+                edited_rows = []
+                for i, row in enumerate(mbcad_table):
+                    nr = row.get("nr", i + 1)
+                    zym = row.get("zymejimas") or f"#{nr}"
+                    with st.expander(f"Eilutė {nr}: {zym}", expanded=False):
+                        r = dict(row)
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            r["zymejimas"] = st.text_input("Žymėjimas", value=str(r.get("zymejimas") or ""), key=f"e_zym_{i}")
+                            r["element_type"] = st.selectbox("Elemento tipas", MBCAD_OPTIONS["element_type"],
+                                index=_opt_idx(MBCAD_OPTIONS["element_type"], r.get("element_type")), key=f"e_et_{i}")
+                            r["sistema"] = st.selectbox("Sistema", MBCAD_OPTIONS["sistema"],
+                                index=_opt_idx(MBCAD_OPTIONS["sistema"], r.get("sistema")), key=f"e_sys_{i}")
+                            r["profilio_variantas"] = st.selectbox("Profilio variantas", MBCAD_OPTIONS["profilio_variantas"],
+                                index=_opt_idx(MBCAD_OPTIONS["profilio_variantas"], r.get("profilio_variantas")), key=f"e_pv_{i}")
+                            r["plotis_mm"] = st.number_input("Plotis (mm)", value=int(r.get("plotis_mm") or 0), step=1, key=f"e_w_{i}")
+                            r["aukstis_mm"] = st.number_input("Aukštis (mm)", value=int(r.get("aukstis_mm") or 0), step=1, key=f"e_h_{i}")
+                            r["kiekis"] = st.number_input("Kiekis", value=int(r.get("kiekis") or 1), step=1, min_value=1, key=f"e_qty_{i}")
+                            r["spalva_isorine"] = st.text_input("Spalva išorinė (RAL/kita)", value=str(r.get("spalva_isorine") or ""), key=f"e_co_{i}")
+                            r["spalva_tipas"] = st.selectbox("Spalvos tipas", MBCAD_OPTIONS["spalva_tipas"],
+                                index=_opt_idx(MBCAD_OPTIONS["spalva_tipas"], r.get("spalva_tipas")), key=f"e_ct_{i}")
+                            r["spalva_pavirsius"] = st.selectbox("Paviršius", MBCAD_OPTIONS["spalva_pavirsius"],
+                                index=_opt_idx(MBCAD_OPTIONS["spalva_pavirsius"], r.get("spalva_pavirsius")), key=f"e_cp_{i}")
+                            r["spalva_vidine"] = st.text_input("Spalva vidinė (RAL/kita)", value=str(r.get("spalva_vidine") or ""), key=f"e_ci_{i}")
+                        with col_b:
+                            r["stiklo_paketas"] = st.selectbox("Stiklo paketas", MBCAD_OPTIONS["stiklo_paketas"],
+                                index=_opt_idx(MBCAD_OPTIONS["stiklo_paketas"], r.get("stiklo_paketas")), key=f"e_gp_{i}")
+                            r["stiklo_storis_mm"] = st.number_input("Stiklo storis (mm)", value=int(r.get("stiklo_storis_mm") or 0), step=1, key=f"e_gt_{i}")
+                            r["stiklo_kodas"] = st.text_input("Stiklo kodas", value=str(r.get("stiklo_kodas") or ""), key=f"e_gk_{i}")
+                            r["stiklo_ug"] = st.number_input("Ug (W/m²K)", value=float(r.get("stiklo_ug") or 0.0), step=0.01, format="%.2f", key=f"e_ug_{i}")
+                            r["stiklo_g"] = st.number_input("g (SHGC)", value=float(r.get("stiklo_g") or 0.0), step=0.01, format="%.2f", key=f"e_sg_{i}")
+                            r["varstymas"] = st.selectbox("Varstymas", MBCAD_OPTIONS["varstymas"],
+                                index=_opt_idx(MBCAD_OPTIONS["varstymas"], r.get("varstymas")), key=f"e_vr_{i}")
+                            r["kampų_jungtys"] = st.selectbox("Kampų jungtys", MBCAD_OPTIONS["kampų_jungtys"],
+                                index=_opt_idx(MBCAD_OPTIONS["kampų_jungtys"], r.get("kampų_jungtys")), key=f"e_kj_{i}")
+                            r["montavimo_budas"] = st.selectbox("Montavimas", MBCAD_OPTIONS["montavimo_budas"],
+                                index=_opt_idx(MBCAD_OPTIONS["montavimo_budas"], r.get("montavimo_budas")), key=f"e_mb_{i}")
+                            r["slenkscio_juosta"] = st.selectbox("Slenkščio juosta", MBCAD_OPTIONS["slenkscio_juosta"],
+                                index=_opt_idx(MBCAD_OPTIONS["slenkscio_juosta"], r.get("slenkscio_juosta")), key=f"e_sj_{i}")
+                            r["stiklinimo_juosta"] = st.selectbox("Stiklinimo juosta", MBCAD_OPTIONS["stiklinimo_juosta"],
+                                index=_opt_idx(MBCAD_OPTIONS["stiklinimo_juosta"], r.get("stiklinimo_juosta")), key=f"e_stj_{i}")
+                            r["tarpine_drenazas"] = st.selectbox("Tarpinė drenažas", MBCAD_OPTIONS["tarpine_drenazas"],
+                                index=_opt_idx(MBCAD_OPTIONS["tarpine_drenazas"], r.get("tarpine_drenazas")), key=f"e_td_{i}")
+                            r["tarpine_rebet"] = st.selectbox("Tarpinė rebetas", MBCAD_OPTIONS["tarpine_rebet"],
+                                index=_opt_idx(MBCAD_OPTIONS["tarpine_rebet"], r.get("tarpine_rebet")), key=f"e_tr_{i}")
+                            r["tarpine_centrinis"] = st.selectbox("Tarpinė centrinis", MBCAD_OPTIONS["tarpine_centrinis"],
+                                index=_opt_idx(MBCAD_OPTIONS["tarpine_centrinis"], r.get("tarpine_centrinis")), key=f"e_tc_{i}")
+                            r["tarpine_slenkscio"] = st.selectbox("Tarpinė slenkstis", MBCAD_OPTIONS["tarpine_slenkscio"],
+                                index=_opt_idx(MBCAD_OPTIONS["tarpine_slenkscio"], r.get("tarpine_slenkscio")), key=f"e_ts_{i}")
+                            r["furnitura_rankena"] = st.selectbox("Rankena", MBCAD_OPTIONS["furnitura_rankena"],
+                                index=_opt_idx(MBCAD_OPTIONS["furnitura_rankena"], r.get("furnitura_rankena")), key=f"e_rk_{i}")
+                            r["apsauga_rc"] = st.selectbox("RC apsauga", MBCAD_OPTIONS["apsauga_rc"],
+                                index=_opt_idx(MBCAD_OPTIONS["apsauga_rc"], r.get("apsauga_rc")), key=f"e_rc_{i}")
+                        r["pastabos"] = st.text_area("Pastabos", value=str(r.get("pastabos") or ""), key=f"e_past_{i}", height=60)
+                        edited_rows.append(r)
+
+                if edited_rows and analysis.get("project_id"):
+                    if st.button("💾 Išsaugoti pataisytą lentelę į DB", type="primary"):
+                        try:
+                            resp = requests.put(
+                                f"{CRM_URL}/projects/{analysis['project_id']}/mbcad",
+                                json={"table": edited_rows},
+                                timeout=10,
+                            )
+                            if resp.ok:
+                                st.success("Lentelė išsaugota ✅")
+                                st.session_state["analysis"]["mbcad_like_table"] = edited_rows
+                            else:
+                                st.error(f"Klaida: {resp.text}")
+                        except Exception as exc:
+                            st.error(str(exc))
+
+                    if analysis.get("project_id"):
+                        export_url = f"{CRM_URL}/projects/{analysis['project_id']}/mbcad/export"
+                        st.link_button("⬇️ Eksportuoti į Excel (iš DB)", export_url)
 
         else:
             st.info("MBcad lentelė dar nesugeneruota.")
@@ -408,7 +599,10 @@ if mode == "Rankinis įkėlimas":
                 st.code(response.text)
             else:
                 data = response.json()
-                st.session_state.analysis = data.get("analysis", data)
+                analysis_obj = data.get("analysis", data)
+                if data.get("project_id") and isinstance(analysis_obj, dict):
+                    analysis_obj["project_id"] = data["project_id"]
+                st.session_state.analysis = analysis_obj
                 st.session_state.files_processed = data.get("files_processed", [])
                 st.success(f"Analizė baigta. Project ID: {data.get('project_id')}")
 
