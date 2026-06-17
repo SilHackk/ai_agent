@@ -12,7 +12,6 @@ from app.services.shape_modeler import model_shapes_from_image
 from app.services.pdf_image_tools import pdf_to_images
 from app.services.project_analyzer import analyze_project_files
 from app.services.pdf_page_selector import select_and_render_relevant_pages
-from app.services.pdf_page_selector import select_and_render_relevant_pages
 from app.services.shape_modeler import analyze_image_shapes
 
 router = APIRouter(prefix='/automation', tags=['automation'])
@@ -85,7 +84,7 @@ async def model_shapes(file: UploadFile = File(...)):
 
     suffix = file_path.suffix.lower()
     if suffix == '.pdf':
-        image_paths = pdf_to_images(file_path, max_pages=10)
+        image_paths = pdf_to_images(file_path, pages=list(range(10)))
     elif suffix in {'.png', '.jpg', '.jpeg', '.webp'}:
         image_paths = [str(file_path)]
     else:
@@ -98,19 +97,11 @@ async def model_shapes(file: UploadFile = File(...)):
             add_window_object(project_id, file_id, obj)
         all_results.append(result)
 
-    return {
-        'status': 'success',
-        'project_id': project_id,
-        'pages_or_images': len(all_results),
-        'results': all_results,
-    }
+    return {'status': 'success', 'project_id': project_id, 'pages_or_images': len(all_results), 'results': all_results}
 
 
 @router.post('/projects/{project_id}/analyze')
 def analyze_imported_project(project_id: int, top_pdf_pages: int = 5, max_scan_pages: int = 100):
-    """Paleidžia analizę ant jau importuoto email projekto attachmentų.
-    Naudok po /emails/import-selected, kai gauni project_id.
-    """
     try:
         init_db()
         return analyze_project_files(project_id, top_pdf_pages=top_pdf_pages, max_scan_pages=max_scan_pages)
@@ -120,9 +111,6 @@ def analyze_imported_project(project_id: int, top_pdf_pages: int = 5, max_scan_p
 
 @router.post('/pdf/select-pages')
 async def select_pdf_pages(file: UploadFile = File(...), top_k: int = 5, max_scan_pages: int = 100):
-    """Tik atrenka reikalingiausius PDF puslapius.
-    Naudinga kai PDF turi 50-100 lapų, o langams aktualūs tik keli.
-    """
     safe_name = (file.filename or 'uploaded.pdf').replace('/', '_').replace('\\', '_')
     file_path = UPLOAD_DIR / safe_name
     file_path.write_bytes(await file.read())
@@ -142,26 +130,19 @@ def get_overlay(path: str):
 @router.post("/pdf/analyze-selected-pages")
 async def analyze_selected_pdf_pages(file: UploadFile = File(...)):
     os.makedirs("uploads/temp", exist_ok=True)
-
     file_path = os.path.join("uploads/temp", file.filename)
     with open(file_path, "wb") as f:
         f.write(await file.read())
-
     selection = select_and_render_relevant_pages(file_path, top_k=5, max_scan_pages=100)
-
     all_objects = []
     all_table_rows = []
     overlays = []
-
     for image_path in selection.get("rendered_images", []):
         result = analyze_image_shapes(image_path)
-
         all_objects.extend(result.get("detected_objects", []))
         all_table_rows.extend(result.get("mbcad_like_table", []))
-
         if result.get("overlay_image_path"):
             overlays.append(result["overlay_image_path"])
-
     return {
         "source_pdf": file_path,
         "selected_pages": selection.get("selected_pages", []),

@@ -46,7 +46,6 @@ def analyze_request(
 
     base_prompt = load_prompt()
 
-    # ── Feedback loop: darbuotojų pataisymai automatiškai į prompt'ą ──────────
     feedback_context = load_feedback_for_prompt(max_items=15)
 
     feedback_section = ""
@@ -61,9 +60,9 @@ Jei dabartinė situacija panaši į aprašytą klaidą — taikyk išmoktą tais
 ---
 """
 
-    content = [
+    messages_content = [
         {
-            "type": "input_text",
+            "type": "text",
             "text": f"""
 {base_prompt}
 {feedback_section}
@@ -89,21 +88,18 @@ Jeigu informacijos nematai aiškiai, rašyk „neaiškiai matoma", bet neišsiga
 
     if pdf_images:
         for item in pdf_images:
-            content.append({
-                "type": "input_image",
-                "image_url": f"data:image/png;base64,{item['image_base64']}",
-                "detail": "high"
+            messages_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{item['image_base64']}",
+                    "detail": "high"
+                }
             })
 
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=[
-            {
-                "role": "user",
-                "content": content
-            }
-        ],
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": messages_content}],
         temperature=0.2
     )
 
-    return response.output_text
+    return response.choices[0].message.content
