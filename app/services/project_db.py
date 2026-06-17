@@ -46,6 +46,7 @@ def init_db():
             ai_classification TEXT,
             ai_classification_reason TEXT,
             ai_urgency TEXT,
+            mbcad_table_json TEXT,
             created_at TEXT NOT NULL,
             FOREIGN KEY(client_id) REFERENCES clients(id)
         )
@@ -105,8 +106,6 @@ def init_db():
             FOREIGN KEY(project_id) REFERENCES projects(id)
         )
         ''')
-
-        # Migracijos: prideda stulpelius, jei jų dar nėra (seniems DB)
         _run_migrations(conn)
 
 
@@ -120,17 +119,13 @@ def _run_migrations(conn):
         ("ai_classification", "TEXT"),
         ("ai_classification_reason", "TEXT"),
         ("ai_urgency", "TEXT"),
+        ("mbcad_table_json", "TEXT"),
     ]:
         if col not in existing:
             conn.execute(f"ALTER TABLE projects ADD COLUMN {col} {definition}")
 
 
 def migrate_orphan_projects() -> int:
-    """
-    Seni projektai su client_email bet be client_id automatiškai
-    susiejami su klientu (arba sukuriamas naujas).
-    Grąžina pataisytų projektų skaičių.
-    """
     init_db()
     fixed = 0
     with get_conn() as conn:
@@ -155,7 +150,6 @@ def migrate_orphan_projects() -> int:
 
 
 def export_clients_df():
-    """Grąžina visų klientų DataFrame eksportui."""
     import pandas as pd
     init_db()
     with get_conn() as conn:
@@ -174,7 +168,6 @@ def export_clients_df():
 
 
 def export_projects_df():
-    """Grąžina visų projektų DataFrame eksportui."""
     import pandas as pd
     init_db()
     with get_conn() as conn:
@@ -198,7 +191,6 @@ def now() -> str:
 # ── CLIENTS ──────────────────────────────────────────────────────────────────
 
 def get_or_create_client(email: str, name: str = None, company: str = None, phone: str = None, city: str = None) -> int:
-    """Grąžina esamo kliento id arba sukuria naują pagal email."""
     init_db()
     with get_conn() as conn:
         row = conn.execute('SELECT id FROM clients WHERE email=?', (email,)).fetchone()
@@ -335,6 +327,29 @@ def update_project_ai(project_id: int, classification: str, reason: str = '', ur
                WHERE id=?''',
             (classification, reason, urgency, project_id)
         )
+
+
+def save_mbcad_table(project_id: int, table: list) -> None:
+    """Išsaugo MBcad lentelę JSON formatu projekto įraše."""
+    init_db()
+    with get_conn() as conn:
+        conn.execute(
+            'UPDATE projects SET mbcad_table_json=? WHERE id=?',
+            (json.dumps(table, ensure_ascii=False), project_id)
+        )
+
+
+def get_mbcad_table(project_id: int) -> list:
+    """Grąžina projekto MBcad lentelę kaip sąrašą."""
+    init_db()
+    with get_conn() as conn:
+        row = conn.execute('SELECT mbcad_table_json FROM projects WHERE id=?', (project_id,)).fetchone()
+        if row and row[0]:
+            try:
+                return json.loads(row[0])
+            except Exception:
+                return []
+        return []
 
 
 def add_project_file(project_id: int, filename: str, content_type: str, saved_path: str) -> int:

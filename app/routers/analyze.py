@@ -9,6 +9,7 @@ from app.services.pdf_reader import extract_text_from_pdf, pdf_pages_to_images_b
 from app.services.storage import save_analysis
 from app.services.classic_extractor import extract_classic_features
 from app.services.text_processing import preprocess_text, tokenize, remove_stopwords
+from app.services.project_db import create_project, save_mbcad_table, init_db
 
 router = APIRouter()
 
@@ -44,18 +45,11 @@ def build_nlp_debug(full_text: str, classic_features: dict) -> dict:
 
 
 def _extract_json_from_text(text: str):
-    """
-    Bando ištraukti JSON iš AI teksto atsakymo.
-    Veikia net jei AI apgaubia JSON markdown blokais arba
-    rašo tekstą prieš/po JSON.
-    """
-    # 1. Bandome tiesiogiai
     try:
         return json.loads(text.strip())
     except Exception:
         pass
 
-    # 2. Ištraukiam iš ```json ... ``` bloko
     match = re.search(r"```json\s*(.*?)```", text, re.DOTALL)
     if match:
         try:
@@ -63,7 +57,6 @@ def _extract_json_from_text(text: str):
         except Exception:
             pass
 
-    # 3. Ištraukiam iš ``` ... ``` bloko
     match = re.search(r"```\s*(.*?)```", text, re.DOTALL)
     if match:
         try:
@@ -71,7 +64,6 @@ def _extract_json_from_text(text: str):
         except Exception:
             pass
 
-    # 4. Ieškome pirmo { arba [ simbolio
     for start_char, end_char in [('{', '}'), ('[', ']')]:
         start = text.find(start_char)
         end = text.rfind(end_char)
@@ -85,12 +77,7 @@ def _extract_json_from_text(text: str):
 
 
 def _extract_mbcad_table_from_text(text: str) -> list:
-    """
-    Specialiai ieško MBcad lentelės JSON masyvo AI atsakyme.
-    AI dažnai grąžina lentelę atskirame JSON bloke teksto pabaigoje.
-    """
-    # Ieškome JSON masyvo su mbcad požymiais
-    matches = re.findall(r'\[\s*\{[^[\]]*"sistema"[^[\]]*\}\s*\]', text, re.DOTALL)
+    matches = re.findall(r'\[\s*\{[^\[\]]*"sistema"[^\[\]]*\}\s*\]', text, re.DOTALL)
     for match in matches:
         try:
             data = json.loads(match)
@@ -99,7 +86,6 @@ def _extract_mbcad_table_from_text(text: str) -> list:
         except Exception:
             pass
 
-    # Ieškome bet kokio JSON masyvo
     matches = re.findall(r'\[\s*\{.*?\}\s*\]', text, re.DOTALL)
     for match in matches:
         try:
@@ -114,33 +100,22 @@ def _extract_mbcad_table_from_text(text: str) -> list:
 
 
 def normalize_ai_result(result, nlp_debug: dict) -> dict:
-    """
-    Paverčia AI atsakymą į struktūrizuotą dict su visais laukais.
-    Tvarko tiek dict, tiek teksto atsakymus.
-    """
     if isinstance(result, dict):
         analysis = result
     else:
         text = str(result).strip()
-
-        # Bandome ištraukti JSON
         parsed = _extract_json_from_text(text)
-
         if parsed and isinstance(parsed, dict):
             analysis = parsed
         else:
-            # AI grąžino tekstą — skaidome į sekcijas
             analysis = _parse_text_response(text)
 
-    # Užtikriname kad mbcad_like_table visada egzistuoja
     if not analysis.get("mbcad_like_table") and not analysis.get("mbcad_table"):
-        # Bandome ištraukti iš teksto jei yra
         raw_text = str(result)
         table = _extract_mbcad_table_from_text(raw_text)
         if table:
             analysis["mbcad_like_table"] = table
 
-    # Normalizuojame laukų pavadinimus
     if analysis.get("mbcad_table") and not analysis.get("mbcad_like_table"):
         analysis["mbcad_like_table"] = analysis["mbcad_table"]
 
@@ -149,10 +124,6 @@ def normalize_ai_result(result, nlp_debug: dict) -> dict:
 
 
 def _parse_text_response(text: str) -> dict:
-    """
-    Kai AI grąžina struktūrizuotą tekstą (ne JSON),
-    bandome išskirti sekcijas pagal antraštes.
-    """
     analysis = {
         "project_summary": "",
         "missing_information": [],
@@ -162,7 +133,6 @@ def _parse_text_response(text: str) -> dict:
         "client_reply_draft": ""
     }
 
-    # Santrauka
     summary_match = re.search(
         r"##\s*Santrauka\s*\n(.*?)(?=##|\Z)",
         text, re.DOTALL | re.IGNORECASE
@@ -170,12 +140,10 @@ def _parse_text_response(text: str) -> dict:
     if summary_match:
         analysis["project_summary"] = summary_match.group(1).strip()
     else:
-        # Pirmą paragrafą naudojame kaip santrauką
         lines = [l.strip() for l in text.split('\n') if l.strip()]
         if lines:
             analysis["project_summary"] = lines[0]
 
-    # Trūkstama informacija
     missing_match = re.search(
         r"##\s*Tr[ūu]kstama informacija\s*\n(.*?)(?=##|\Z)",
         text, re.DOTALL | re.IGNORECASE
@@ -185,7 +153,6 @@ def _parse_text_response(text: str) -> dict:
         items = re.findall(r"[-*•]\s*(.+)", missing_text)
         analysis["missing_information"] = items if items else [missing_text]
 
-    # Rekomendacija
     rec_match = re.search(
         r"##\s*Rekomendacija.*?\n(.*?)(?=##|\Z)",
         text, re.DOTALL | re.IGNORECASE
@@ -193,7 +160,6 @@ def _parse_text_response(text: str) -> dict:
     if rec_match:
         analysis["warnings"] = [rec_match.group(1).strip()]
 
-    # Atsakymo juodraštis
     draft_match = re.search(
         r"##\s*Atsakymo.*?juodra[šs]tis\s*\n(.*?)(?=##|\Z)",
         text, re.DOTALL | re.IGNORECASE
@@ -201,12 +167,10 @@ def _parse_text_response(text: str) -> dict:
     if draft_match:
         analysis["client_reply_draft"] = draft_match.group(1).strip()
 
-    # MBcad lentelė — ieškome JSON bloko
     mbcad_table = _extract_mbcad_table_from_text(text)
     if mbcad_table:
         analysis["mbcad_like_table"] = mbcad_table
 
-    # Jei santrauka tuščia — naudojame visą tekstą
     if not analysis["project_summary"]:
         analysis["project_summary"] = text[:800]
 
@@ -269,8 +233,25 @@ async def analyze(
         source="fastapi"
     )
 
+    # Išsaugome projektą ir MBcad lentelę DB
+    project_id = None
+    mbcad_table = analysis.get("mbcad_like_table", [])
+    if mbcad_table or email_text:
+        try:
+            init_db()
+            project_id = create_project(
+                source="analyze_endpoint",
+                email_text=email_text[:5000] if email_text else "",
+                subject=email_text[:80] if email_text else "Analizė"
+            )
+            if mbcad_table and isinstance(mbcad_table, list):
+                save_mbcad_table(project_id, mbcad_table)
+        except Exception:
+            pass
+
     return {
         "status": "success",
+        "project_id": project_id,
         "classic_features": classic_features,
         "analysis": analysis,
         "files_processed": files_processed,

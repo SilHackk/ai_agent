@@ -36,22 +36,36 @@ Stulpeliai tiksliai pagal MBcad laukus:
     "zymejimas": "L1",
     "element_type": "1) Windows and display windows",
     "sistema": "MB-79N",
+    "profilio_variantas": "HI",
     "plotis_mm": 1200,
     "aukstis_mm": 1500,
     "kiekis": 2,
     "spalva_isorine": "RAL 7016",
+    "spalva_tipas": "X) RAL - Lacquered, typical",
+    "spalva_pavirsius": "MAT",
     "spalva_vidine": "RAL 9016",
-    "stiklo_paketas": "4/16/4 Low-E",
-    "varstymas": "Inward opening / Fixed",
-    "profilio_variantas": "ST",
+    "stiklo_paketas": "Combined two-chamber pane",
+    "stiklo_storis_mm": 42,
+    "stiklo_kodas": "15201117 26mm TER",
+    "stiklo_ug": 0.5,
+    "stiklo_g": 0.3,
+    "varstymas": "Inward opening tilt-turn",
     "kampų_jungtys": "Crimped",
-    "montavimo_budas": "Anchors",
+    "montavimo_budas": "Expansion bolts",
+    "slenkscio_juosta": "Standard strip",
+    "stiklinimo_juosta": "Standard rectangular",
+    "tarpine_drenazas": "8045502X",
+    "tarpine_rebet": "120523",
+    "tarpine_centrinis": "120522",
+    "tarpine_slenkscio": "121592",
+    "furnitura_rankena": "ALUPROF - Tongue handle CLASSIC",
+    "apsauga_rc": "No",
     "pastabos": ""
   }
 ]
 ```
 
-Element type reikšmės (tiksliai kaip MBcad):
+**Element type reikšmės (tiksliai kaip MBcad):**
 - Langai → "1) Windows and display windows"
 - Durys į vidų → "2) Inward opening doors"
 - Durys į išorę → "3) Outward opening doors"
@@ -59,11 +73,57 @@ Element type reikšmės (tiksliai kaip MBcad):
 - Fasadai → "5) Façades"
 - Kita → "6) Other"
 
-Sistemos (ALUPROF):
-MB-45, MB-59S, MB-60, MB-60US, MB-69V, MB-70, MB-70US, MB-79N, MB-79N RENO MONO, MB-79N US, MB-79N WW, MB-80, MB-86, MB-86N, MB-96US
+**Sistemos (ALUPROF):**
+MB-45, MB-59S, MB-60, MB-60US, MB-69V, MB-70, MB-70US, MB-70HI, MB-79N, MB-79H, MB-79HI, MB-79N RENO MONO, MB-79N US, MB-79N WW, MB-80, MB-86, MB-86N, MB-96US, MB-104, MB-104 Windows, MB-SR50N, MB-SR50N EFEKT, MB-SR50N HI+, MB-SLIDE, MB-SLIDER, MB-FOLD LINE, MB-SOFT
 
-Jei sistemos nenurodyta — rašyk "Patikslinti" ir pastabose aprašyk kas žinoma.
+**Profilio variantas:** ST (standard), HI (high insulation), N (new), US (ultra slim)
+
+**Spalvos tipas (tiksliai kaip MBcad):**
+- "0 raw" — neapdorotas
+- "1 C-B - Anodized, natural aluminum"
+- "2 Anodized, colour"
+- "X) RAL - Lacquered, colour" (individualus)
+- "X) RAL - Lacquered, typical" (standartinis)
+- "X) RAL - Lacquered, untypical" (nestandartinis)
+- "Y) Bicolour (NRI-E Dial, 3 Inter.)" (dviejų spalvų)
+- "Z) Anodized by user - RAL"
+- "Z) Lacquered by user - RAL"
+
+**Spalvos paviršius:** MAT, STRUKTURA, SEASIDE, STANDARD
+
+**Stiklo paketų tipai:**
+- "Single glass"
+- "Combined two-chamber pane" (42mm arba 50mm)
+- "Double glass unit"
+- Vitrage simple
+
+**Stiklo kodai (Aluprof pavyzdžiai):** 15201117 26mm TER, E130, 42mm, 50mm — naudok tikslų kodą jei matosi dokumente
+
+**Varstymo tipai:**
+- Fixed (fiksuotas)
+- Inward opening (įstumiamas)
+- Inward opening tilt-turn (pasisukantis-pasisveriantis)
+- Outward opening (išstumiamas)
+- Sliding (slankiojantis)
+- Folding (sulankstomas)
+
+**Montavimo būdas:** No fixing, Anchors, Expansion bolts, Expansion bolts (alternative), Concrete screws
+
+**Kampų jungtys:** Crimped, Pinned
+
+**Slenksčio juosta:** Standard strip, Strips do not require milling
+
+**Stiklinimo juosta:** Standard (rectangular), Prestige (rounded), Style, Standard (rectangular, Style gasket), Prestige (rounded, Style gaskets)
+
+**Tarpinės (drenažo dangtelis):** No drainage, 8045501X, 8045502X
+**Tarpinės (rebet):** 120454, 120523, 120523+120524
+**Tarpinės (centrinis):** 120522, 120590
+**Tarpinės (slenkščio):** 120757, 121592
+
+**Apsauga RC:** No, RC1, RC2, RC3, RC4
+
 Jei reikšmės nežinomos — rašyk "Nenurodyta", bet NIEKADA neišsigalvok.
+Jei sistemos nenurodyta — rašyk "Patikslinti" ir pastabose aprašyk kas žinoma.
 
 ---
 
@@ -71,5 +131,7 @@ Jei reikšmės nežinomos — rašyk "Nenurodyta", bet NIEKADA neišsigalvok.
 
 - Jei PDF turi langų žiniaraštį, fasadą ar specifikacijų lentelę — naudok juos kaip pagrindinį šaltinį
 - Jei projektas jau turi pasiūlymą su kainomis — nerašyk kad trūksta informacijos, tiesiog paruošk laišką
-- Vaizdus analizuok: ieškoti langų žymėjimų, matmenų, brėžinių, spalvų zonų
+- Vaizdus analizuok: ieškoti langų žymėjimų, matmenų, brėžinių, spalvų zonų, profilio kodų
+- Profilio kodai (pvz. K5181010) padeda identifikuoti sistemą ir stiklo paketą
 - Kiekvienas skirtingas langas = atskira eilutė lentelėje
+- Jei matai keletą vienodų langų — naudok kiekis lauką, ne atskiras eilutes

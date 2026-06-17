@@ -1,24 +1,14 @@
 """
 CRM router — app/routers/crm.py
-
-Endpoints:
-    GET  /crm/clients                  — klientų sąrašas su paieška
-    GET  /crm/clients/{id}             — vieno kliento kortelė
-    POST /crm/clients                  — sukurti klientą rankiniu būdu
-    PUT  /crm/clients/{id}             — atnaujinti kliento duomenis
-    GET  /crm/clients/{id}/projects    — kliento projektų istorija
-    GET  /crm/clients/{id}/interactions — kliento kontaktų istorija
-    POST /crm/clients/{id}/interactions — pridėti kontaktą rankiniu būdu
-    POST /crm/clients/{id}/ai-segment  — AI perskaičiuoja kliento segmentą
-    GET  /crm/projects                 — visi projektai su filtru
-    POST /crm/projects/{id}/classify   — AI klasifikuoja projektą
-    GET  /crm/stats                    — greita CRM suvestinė
 """
 
+import io
+import json
 import os
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from openai import OpenAI
 
 from app.services.project_db import (
@@ -26,6 +16,7 @@ from app.services.project_db import (
     get_or_create_client, update_client_ai_segment,
     get_client_projects, get_client_interactions, add_interaction,
     list_projects, get_project, update_project_ai, update_project_status,
+    save_mbcad_table, get_mbcad_table,
     init_db, get_conn, now
 )
 
@@ -65,15 +56,18 @@ class ProjectStatusUpdate(BaseModel):
     status: str
 
 
+class MBcadTableUpdate(BaseModel):
+    table: List[dict]
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _ai_classify_project(subject: str, email_text: str) -> dict:
-    """OpenAI klasifikuoja užklausos tipą ir skubumą."""
     prompt = f"""Tu esi langų gamybos įmonės CRM asistentas.
 Klasifikuok šią kliento užklausą.
 
 Tema: {subject}
-Tekstas: {email_text[:1500]}
+tekstas: {email_text[:1500]}
 
 Grąžink TIK JSON be markdown:
 {{
@@ -89,7 +83,6 @@ Grąžink TIK JSON be markdown:
         max_tokens=200
     )
 
-    import json
     try:
         text = response.choices[0].message.content.strip()
         text = text.replace("```json", "").replace("```", "").strip()
@@ -99,7 +92,6 @@ Grąžink TIK JSON be markdown:
 
 
 def _ai_segment_client(client_id: int) -> dict:
-    """OpenAI nustato kliento segmentą pagal projektų istoriją."""
     projects = get_client_projects(client_id)
     client = get_client(client_id)
 
@@ -129,7 +121,6 @@ Nustatyk kliento segmentą. Grąžink TIK JSON be markdown:
         max_tokens=150
     )
 
-    import json
     try:
         text = response.choices[0].message.content.strip()
         text = text.replace("```json", "").replace("```", "").strip()
@@ -145,14 +136,12 @@ def clients_list(
     search: str = Query("", description="Paieška pagal email, vardą, įmonę, miestą"),
     limit: int = Query(100, le=500)
 ):
-    """Klientų sąrašas su paieška."""
     init_db()
     return {"clients": list_clients(limit=limit, search=search)}
 
 
 @router.get("/clients/{client_id}")
 def client_detail(client_id: int):
-    """Vieno kliento kortelė."""
     init_db()
     c = get_client(client_id)
     if not c:
@@ -170,7 +159,6 @@ def client_detail(client_id: int):
 
 @router.post("/clients")
 def client_create(payload: ClientCreate):
-    """Sukurti klientą rankiniu būdu."""
     init_db()
     existing = get_client_by_email(payload.email)
     if existing:
@@ -189,7 +177,6 @@ def client_create(payload: ClientCreate):
 
 @router.put("/clients/{client_id}")
 def client_update(client_id: int, payload: ClientUpdate):
-    """Atnaujinti kliento duomenis."""
     init_db()
     if not get_client(client_id):
         raise HTTPException(status_code=404, detail="Klientas nerastas")
@@ -199,7 +186,6 @@ def client_update(client_id: int, payload: ClientUpdate):
 
 @router.get("/clients/{client_id}/projects")
 def client_projects(client_id: int):
-    """Kliento projektų istorija."""
     init_db()
     if not get_client(client_id):
         raise HTTPException(status_code=404, detail="Klientas nerastas")
@@ -208,7 +194,6 @@ def client_projects(client_id: int):
 
 @router.get("/clients/{client_id}/interactions")
 def client_interactions(client_id: int):
-    """Kliento kontaktų istorija."""
     init_db()
     if not get_client(client_id):
         raise HTTPException(status_code=404, detail="Klientas nerastas")
@@ -217,7 +202,6 @@ def client_interactions(client_id: int):
 
 @router.post("/clients/{client_id}/interactions")
 def interaction_add(client_id: int, payload: InteractionCreate):
-    """Pridėti kontaktą rankiniu būdu (pvz. skambutis, susitikimas)."""
     init_db()
     if not get_client(client_id):
         raise HTTPException(status_code=404, detail="Klientas nerastas")
@@ -233,7 +217,6 @@ def interaction_add(client_id: int, payload: InteractionCreate):
 
 @router.post("/clients/{client_id}/ai-segment")
 def client_ai_segment(client_id: int):
-    """AI perskaičiuoja kliento segmentą pagal projektų istoriją."""
     init_db()
     if not get_client(client_id):
         raise HTTPException(status_code=404, detail="Klientas nerastas")
@@ -255,31 +238,24 @@ def client_ai_segment(client_id: int):
 
 @router.get("/projects")
 def projects_list(
-    status: Optional[str] = Query(None, description="Filtras pagal statusą: new, in_progress, done"),
-    classification: Optional[str] = Query(None, description="Filtras pagal AI klasifikaciją"),
-    urgency: Optional[str] = Query(None, description="Filtras: high|medium|low"),
+    status: Optional[str] = Query(None),
+    classification: Optional[str] = Query(None),
+    urgency: Optional[str] = Query(None),
     limit: int = Query(50, le=200)
 ):
-    """Visi projektai su filtrais."""
     init_db()
     all_projects = list_projects(limit=500)
-
     if status:
         all_projects = [p for p in all_projects if p.get("status") == status]
     if classification:
         all_projects = [p for p in all_projects if p.get("ai_classification") == classification]
     if urgency:
         all_projects = [p for p in all_projects if p.get("ai_urgency") == urgency]
-
-    return {
-        "count": len(all_projects[:limit]),
-        "projects": all_projects[:limit]
-    }
+    return {"count": len(all_projects[:limit]), "projects": all_projects[:limit]}
 
 
 @router.post("/projects/{project_id}/classify")
 def project_classify(project_id: int):
-    """AI klasifikuoja projekto užklausą ir nustato skubumą."""
     init_db()
     project = get_project(project_id)
     if not project:
@@ -289,15 +265,12 @@ def project_classify(project_id: int):
         subject=project.get("subject", ""),
         email_text=project.get("email_text", "")
     )
-
     update_project_ai(
         project_id=project_id,
         classification=result.get("classification", "kita"),
         reason=result.get("reason", ""),
         urgency=result.get("urgency", "medium")
     )
-
-    # Jei yra klientas — pridedame interaction
     client_id = project.get("client_id")
     if client_id:
         add_interaction(
@@ -307,7 +280,6 @@ def project_classify(project_id: int):
             summary=f"AI klasifikacija: {result.get('classification')} | {result.get('reason')}",
             direction="inbound"
         )
-
     return {
         "status": "classified",
         "project_id": project_id,
@@ -319,7 +291,6 @@ def project_classify(project_id: int):
 
 @router.put("/projects/{project_id}/status")
 def project_status_update(project_id: int, payload: ProjectStatusUpdate):
-    """Atnaujinti projekto statusą."""
     init_db()
     if not get_project(project_id):
         raise HTTPException(status_code=404, detail="Projektas nerastas")
@@ -330,22 +301,111 @@ def project_status_update(project_id: int, payload: ProjectStatusUpdate):
     return {"status": "updated", "project_id": project_id, "new_status": payload.status}
 
 
+# ── MBcad lentelė ─────────────────────────────────────────────────────────────
+
+@router.get("/projects/{project_id}/mbcad")
+def project_mbcad_get(project_id: int):
+    """Grąžina projekto MBcad lentelę."""
+    init_db()
+    if not get_project(project_id):
+        raise HTTPException(status_code=404, detail="Projektas nerastas")
+    table = get_mbcad_table(project_id)
+    return {"project_id": project_id, "rows": len(table), "mbcad_table": table}
+
+
+@router.put("/projects/{project_id}/mbcad")
+def project_mbcad_update(project_id: int, payload: MBcadTableUpdate):
+    """Atnaujina projekto MBcad lentelę (darbuotojas gali pataisyti rankiniu būdu)."""
+    init_db()
+    if not get_project(project_id):
+        raise HTTPException(status_code=404, detail="Projektas nerastas")
+    save_mbcad_table(project_id, payload.table)
+    return {"status": "updated", "project_id": project_id, "rows": len(payload.table)}
+
+
+@router.get("/projects/{project_id}/mbcad/export")
+def project_mbcad_export(project_id: int):
+    """Eksportuoja MBcad lentelę kaip Excel (.xlsx) failą."""
+    init_db()
+    if not get_project(project_id):
+        raise HTTPException(status_code=404, detail="Projektas nerastas")
+    table = get_mbcad_table(project_id)
+    if not table:
+        raise HTTPException(status_code=404, detail="MBcad lentelė tuščia arba dar neišanalizuota")
+
+    try:
+        import pandas as pd
+        df = pd.DataFrame(table)
+
+        column_labels = {
+            "nr": "Nr.",
+            "zymejimas": "Žymėjimas",
+            "element_type": "Elemento tipas",
+            "sistema": "Sistema",
+            "profilio_variantas": "Profilio var.",
+            "plotis_mm": "Plotis (mm)",
+            "aukstis_mm": "Aukštis (mm)",
+            "kiekis": "Kiekis",
+            "spalva_isorine": "Spalva išorinė",
+            "spalva_tipas": "Spalvos tipas",
+            "spalva_pavirsius": "Paviršius",
+            "spalva_vidine": "Spalva vidinė",
+            "stiklo_paketas": "Stiklo paketas",
+            "stiklo_storis_mm": "Stiklo storis",
+            "stiklo_kodas": "Stiklo kodas",
+            "stiklo_ug": "Ug",
+            "stiklo_g": "g",
+            "varstymas": "Varstymas",
+            "kampų_jungtys": "Kampų jungtys",
+            "montavimo_budas": "Montavimas",
+            "slenkscio_juosta": "Slenksčio juosta",
+            "stiklinimo_juosta": "Stiklinimo juosta",
+            "tarpine_drenazas": "Tarpinė drenažas",
+            "tarpine_rebet": "Tarpinė rebetas",
+            "tarpine_centrinis": "Tarpinė centrinis",
+            "tarpine_slenkscio": "Tarpinė slenksčio",
+            "furnitura_rankena": "Rankena",
+            "apsauga_rc": "RC klasė",
+            "pastabos": "Pastabos",
+        }
+        df.rename(columns={k: v for k, v in column_labels.items() if k in df.columns}, inplace=True)
+
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='MBcad')
+            ws = writer.sheets['MBcad']
+            for col in ws.columns:
+                max_len = max(len(str(cell.value or '')) for cell in col)
+                ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 40)
+        output.seek(0)
+
+        project = get_project(project_id)
+        filename = f"mbcad_projektas_{project_id}.xlsx"
+
+        return StreamingResponse(
+            output,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except ImportError:
+        raise HTTPException(status_code=500, detail="openpyxl neįdiegtas. Paleisk: pip install openpyxl")
+
+
 # ── Stats ─────────────────────────────────────────────────────────────────────
 
 @router.get("/stats")
 def crm_stats():
-    """Greita CRM suvestinė darbuotojui."""
     init_db()
     with get_conn() as conn:
         total_clients = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
         total_projects = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
         new_projects = conn.execute("SELECT COUNT(*) FROM projects WHERE status='new'").fetchone()[0]
         high_urgency = conn.execute("SELECT COUNT(*) FROM projects WHERE ai_urgency='high'").fetchone()[0]
+        with_mbcad = conn.execute("SELECT COUNT(*) FROM projects WHERE mbcad_table_json IS NOT NULL AND mbcad_table_json != '[]'").fetchone()[0]
 
         segments = conn.execute(
             "SELECT ai_segment, COUNT(*) as cnt FROM clients WHERE ai_segment IS NOT NULL GROUP BY ai_segment"
         ).fetchall()
-
         classifications = conn.execute(
             "SELECT ai_classification, COUNT(*) as cnt FROM projects WHERE ai_classification IS NOT NULL GROUP BY ai_classification"
         ).fetchall()
@@ -355,6 +415,7 @@ def crm_stats():
         "total_projects": total_projects,
         "new_projects": new_projects,
         "high_urgency_projects": high_urgency,
+        "projects_with_mbcad_table": with_mbcad,
         "client_segments": {row[0]: row[1] for row in segments},
         "project_classifications": {row[0]: row[1] for row in classifications}
     }
