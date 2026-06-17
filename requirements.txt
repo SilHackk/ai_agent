@@ -11,7 +11,5 @@ numpy
 pydantic
 pytesseract
 msal
-transformers
-torch
 streamlit
 openpyxl
