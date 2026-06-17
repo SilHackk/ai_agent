@@ -1,0 +1,46 @@
+services:
+
+  fastapi:
+    build: .
+    container_name: ai_langai_api
+    command: python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env.local
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./config:/app/config
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  streamlit:
+    build: .
+    container_name: ai_langai_ui
+    command: streamlit run app_ui.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+    env_file:
+      - .env.local
+    environment:
+      - APP_PASSWORD=${APP_PASSWORD}
+      - FASTAPI_URL=http://fastapi:8000
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./config:/app/config
+    ports:
+      - "8501:8501"
+    depends_on:
+      - fastapi
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: ai_langai_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - streamlit
+      - fastapi
+    restart: unless-stopped

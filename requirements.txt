@@ -13,3 +13,5 @@ pytesseract
 msal
 transformers
 torch
+streamlit
+openpyxl

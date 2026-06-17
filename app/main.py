@@ -3,8 +3,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
 from app.services.ms_graph_auth import _build_msal_app, build_auth_url
 import os
-from app.routers import analyze, automation
+from app.routers import analyze, automation, crm
 from app.services.token_store import save_access_token
+
 app = FastAPI(
     title="AI langų užklausų agentas",
     description="Sistema analizuoja kliento laišką ir PDF projektą langų įmonei.",
@@ -14,7 +15,7 @@ AUTH_FLOW = {}
 
 app.include_router(analyze.router)
 app.include_router(automation.router)
-
+app.include_router(crm.router)
 
 @app.get("/")
 def root():
