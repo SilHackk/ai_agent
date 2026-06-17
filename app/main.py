@@ -32,8 +32,6 @@ def auth_login():
 
 @app.get("/auth/callback")
 def auth_callback(request: Request):
-    global TOKEN_CACHE
-
     app_msal = _build_msal_app()
 
     result = app_msal.acquire_token_by_auth_code_flow(
