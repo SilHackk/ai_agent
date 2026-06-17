@@ -705,8 +705,17 @@ elif mode == "Outlook laiškai":
             )
 
         if response.status_code != 200:
-            st.error("Nepavyko gauti Outlook laiškų")
-            st.code(response.text)
+            try:
+                detail = response.json().get("detail", "")
+            except Exception:
+                detail = response.text
+            if "auth/login" in detail or "prisijunk" in detail.lower():
+                st.warning("⚠️ Reikia prisijungti prie Outlook.")
+                login_url = f"{BASE_URL}/auth/login"
+                st.markdown(f"**[👉 Spustelėk čia kad prisijungtum prie Outlook]({login_url})**")
+                st.caption("Po prisijungimo grįžk čia ir bandyk iš naujo.")
+            else:
+                st.error(f"Nepavyko gauti Outlook laiškų: {detail}")
         else:
             data = response.json()
             st.session_state.outlook_messages = data.get("emails", [])
