@@ -65,7 +65,14 @@ def load_rules(config_path: str | Path = CONFIG_PATH) -> dict[str, Any]:
 
 
 def _read_image(path: str | Path) -> np.ndarray:
-    img = cv2.imread(str(path))
+    img = cv2.imread(str(Path(path)))
+    if img is None:
+        try:
+            with open(Path(path), "rb") as f:
+                arr = np.frombuffer(f.read(), dtype=np.uint8)
+            img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        except Exception:
+            pass
     if img is None:
         raise ValueError(f"Nepavyko perskaityti paveikslėlio: {path}")
     return img
