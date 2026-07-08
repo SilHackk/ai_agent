@@ -1,11 +1,19 @@
 import base64
 import json
 import os
+import re
+import unicodedata
 from pathlib import Path
 from typing import List, Dict
 
 import fitz
 from openai import OpenAI
+
+
+def _safe_stem(path: str) -> str:
+    name = unicodedata.normalize("NFKD", Path(path).stem)
+    name = name.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^\w\-]", "_", name) or "pdf"
 
 
 def _image_to_data_url(image_path: str) -> str:
@@ -17,7 +25,7 @@ def _image_to_data_url(image_path: str) -> str:
 def pdf_to_preview_images(pdf_path: str, output_dir: str = "uploads/pdf_previews", zoom: float = 0.55) -> List[Dict]:
     os.makedirs(output_dir, exist_ok=True)
     doc = fitz.open(pdf_path)
-    pdf_name = Path(pdf_path).stem
+    pdf_name = _safe_stem(pdf_path)
     previews = []
     for page_index in range(len(doc)):
         page = doc[page_index]
@@ -95,7 +103,7 @@ def select_relevant_pdf_pages(pdf_path: str):
 def pdf_to_images(pdf_path: str, pages: List[int] | None = None, output_dir: str = "uploads/pdf_pages", zoom: float = 2.0) -> List[str]:
     os.makedirs(output_dir, exist_ok=True)
     doc = fitz.open(pdf_path)
-    pdf_name = Path(pdf_path).stem
+    pdf_name = _safe_stem(pdf_path)
     image_paths = []
     if pages is None:
         pages = list(range(len(doc)))

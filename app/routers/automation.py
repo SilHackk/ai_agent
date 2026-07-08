@@ -130,7 +130,11 @@ def get_overlay(path: str):
 @router.post("/pdf/analyze-selected-pages")
 async def analyze_selected_pdf_pages(file: UploadFile = File(...)):
     os.makedirs("uploads/temp", exist_ok=True)
-    file_path = os.path.join("uploads/temp", file.filename)
+    import unicodedata, re
+    safe_name = unicodedata.normalize("NFKD", file.filename or "upload.pdf")
+    safe_name = safe_name.encode("ascii", "ignore").decode("ascii")
+    safe_name = re.sub(r"[^\w.\-]", "_", safe_name)
+    file_path = os.path.join("uploads/temp", safe_name)
     with open(file_path, "wb") as f:
         f.write(await file.read())
     selection = select_and_render_relevant_pages(file_path, top_k=5, max_scan_pages=100)
