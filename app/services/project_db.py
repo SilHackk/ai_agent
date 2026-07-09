@@ -106,6 +106,31 @@ def init_db():
             FOREIGN KEY(project_id) REFERENCES projects(id)
         )
         ''')
+        conn.execute('''
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            analysis_timestamp TEXT,
+            field TEXT,
+            ai_value TEXT,
+            is_correct INTEGER,
+            comment TEXT,
+            corrected_value TEXT
+        )
+        ''')
+        conn.execute('''
+        CREATE TABLE IF NOT EXISTS analyses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            source TEXT,
+            email_text TEXT,
+            pdf_text_preview TEXT,
+            ai_analysis TEXT,
+            human_reply TEXT,
+            human_notes TEXT,
+            quality_score TEXT
+        )
+        ''')
         _run_migrations(conn)
 
 
